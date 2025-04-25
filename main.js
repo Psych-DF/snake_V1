@@ -22,36 +22,39 @@ let gameStarted = false;
 let gameOver = false;
 let startText;
 let gameOverText;
+let leaderboardText;
 
 function preload() {}
 
 function create() {
-  // Initial values
   direction = 'RIGHT';
   score = 0;
   gameStarted = false;
   gameOver = false;
   snake = [];
 
-  // Add start screen text
   startText = this.add.text(200, 200, 'Press SPACE to Start', {
     font: '16px Arial',
     fill: '#ffffff'
   }).setOrigin(0.5);
 
-  // Score text (start hidden)
   scoreText = this.add.text(10, 10, '', {
     font: '16px Arial',
     fill: '#ffffff'
   });
 
-  // Game over text (start hidden)
-  gameOverText = this.add.text(200, 200, '', {
+  gameOverText = this.add.text(200, 180, '', {
     font: '20px Arial',
-    fill: '#ff0000'
+    fill: '#ff0000',
+    align: 'center'
   }).setOrigin(0.5);
 
-  // Input listeners
+  leaderboardText = this.add.text(200, 220, '', {
+    font: '14px Courier',
+    fill: '#00ffcc',
+    align: 'center'
+  }).setOrigin(0.5);
+
   this.input.keyboard.on('keydown-SPACE', () => {
     if (!gameStarted) {
       startGame.call(this);
@@ -78,14 +81,12 @@ function startGame() {
   startText.setVisible(false);
   scoreText.setText('Score: 0');
 
-  // Create initial snake (3 segments)
   snake = [
     this.add.rectangle(200, 200, 20, 20, 0x00ff00),
     this.add.rectangle(180, 200, 20, 20, 0x00cc00),
     this.add.rectangle(160, 200, 20, 20, 0x009900)
   ];
 
-  // Create food
   food = this.add.rectangle(
     Phaser.Math.Snap.To(Math.random() * 400, 20),
     Phaser.Math.Snap.To(Math.random() * 400, 20),
@@ -103,20 +104,17 @@ function update(time) {
   const newX = head.x + (direction === 'LEFT' ? -20 : direction === 'RIGHT' ? 20 : 0);
   const newY = head.y + (direction === 'UP' ? -20 : direction === 'DOWN' ? 20 : 0);
 
-  // Collision with wall or self
   if (
     newX < 0 || newX >= 400 || newY < 0 || newY >= 400 ||
     snake.some(seg => seg.x === newX && seg.y === newY)
   ) {
-    handleGameOver();
+    handleGameOver.call(this);
     return;
   }
 
-  // Add new head
   const newHead = this.add.rectangle(newX, newY, 20, 20, 0x00ff00);
   snake.unshift(newHead);
 
-  // Check food collision
   if (newX === food.x && newY === food.y) {
     score++;
     scoreText.setText('Score: ' + score);
@@ -126,12 +124,40 @@ function update(time) {
       Phaser.Math.Snap.To(Math.random() * 400, 20)
     );
   } else {
-    // Remove tail
     snake.pop().destroy();
   }
 }
 
-function handleGameOver() {
+async function handleGameOver() {
   gameOver = true;
   gameOverText.setText('Game Over\nPress R to Retry');
+
+  const leaderboard = await fetch('/api/leaderboard').then(res => res.json());
+  const lowestTopScore = leaderboard[9]?.score || 0;
+
+  if (score > lowestTopScore || leaderboard.length < 10) {
+    let initials = '';
+    while (!/^[A-Z]{3}$/.test(initials)) {
+      initials = prompt('New High Score! Enter 3-letter initials:').toUpperCase().slice(0, 3);
+    }
+
+    await fetch('/api/submit-score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initials, score })
+    });
+
+    const updatedBoard = await fetch('/api/leaderboard').then(res => res.json());
+    displayLeaderboard(updatedBoard);
+  } else {
+    displayLeaderboard(leaderboard);
+  }
+}
+
+function displayLeaderboard(data) {
+  const lines = ['🏆 TOP 10 SCORES 🏆'];
+  data.forEach((entry, i) => {
+    lines.push(`${i + 1}. ${entry.initials.padEnd(3)} - ${entry.score}`);
+  });
+  leaderboardText.setText(lines.join('\n'));
 }
