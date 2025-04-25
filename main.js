@@ -12,17 +12,10 @@ const config = {
 
 const game = new Phaser.Game(config);
 
-let snake;
-let direction;
-let nextMoveTime = 0;
-let food;
-let score = 0;
-let scoreText;
-let gameStarted = false;
-let gameOver = false;
-let startText;
-let gameOverText;
-let leaderboardText;
+let snake, direction, nextMoveTime = 0;
+let food, score = 0, scoreText;
+let gameStarted = false, gameOver = false;
+let startText, gameOverText, leaderboardText;
 
 function preload() {}
 
@@ -56,15 +49,11 @@ function create() {
   }).setOrigin(0.5);
 
   this.input.keyboard.on('keydown-SPACE', () => {
-    if (!gameStarted) {
-      startGame.call(this);
-    }
+    if (!gameStarted) startGame.call(this);
   });
 
   this.input.keyboard.on('keydown-R', () => {
-    if (gameOver) {
-      this.scene.restart();
-    }
+    if (gameOver) this.scene.restart();
   });
 
   this.input.keyboard.on('keydown', (e) => {
@@ -131,26 +120,36 @@ function update(time) {
 async function handleGameOver() {
   gameOver = true;
   gameOverText.setText('Game Over\nPress R to Retry');
+  console.log('[Game Over] Score:', score);
 
-  const leaderboard = await fetch('/api/leaderboard').then(res => res.json());
-  const lowestTopScore = leaderboard[9]?.score || 0;
+  try {
+    const leaderboard = await fetch('/api/leaderboard').then(res => res.json());
+    console.log('[Leaderboard]:', leaderboard);
 
-  if (score > lowestTopScore || leaderboard.length < 10) {
-    let initials = '';
-    while (!/^[A-Z]{3}$/.test(initials)) {
-      initials = prompt('New High Score! Enter 3-letter initials:').toUpperCase().slice(0, 3);
+    const lowestTopScore = leaderboard[9]?.score || 0;
+    const qualifies = score > lowestTopScore || leaderboard.length < 10;
+    console.log('[Score Qualifies?]', qualifies);
+
+    if (qualifies) {
+      let initials = prompt('New High Score! Enter 3-letter initials:');
+      if (!initials) return;
+      initials = initials.toUpperCase().slice(0, 3);
+      console.log('[Submitting Initials]:', initials);
+
+      const res = await fetch('/api/submit-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initials, score })
+      });
+
+      const data = await res.json();
+      console.log('[Submit Response]:', data);
     }
-
-    await fetch('/api/submit-score', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initials, score })
-    });
 
     const updatedBoard = await fetch('/api/leaderboard').then(res => res.json());
     displayLeaderboard(updatedBoard);
-  } else {
-    displayLeaderboard(leaderboard);
+  } catch (err) {
+    console.error('[Error submitting score]', err);
   }
 }
 
